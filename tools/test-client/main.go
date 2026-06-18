@@ -20,30 +20,29 @@ func generateHMAC(payload []byte, timestamp int64, secret string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func main() {
-	payload := []byte(`{"action":"retry-test"}`)
-	secret := "s1"
+func send(eventType, keyID, secret string, eventID string) {
+	payload := []byte(`{"x":1}`)
 	timestamp := time.Now().Unix()
 	signature := generateHMAC(payload, timestamp, secret)
 
-	req, err := http.NewRequest("POST", "http://localhost:8084/webhook/receive", bytes.NewReader(payload))
-	if err != nil {
-		panic(err)
-	}
+	req, _ := http.NewRequest("POST", "http://localhost:8084/webhook/receive", bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Event-ID", "evt-retry-offbyone-001")
-	req.Header.Set("X-Event-Type", "retry.test")
-	req.Header.Set("X-Key-ID", "k1")
+	req.Header.Set("X-Event-ID", eventID)
+	req.Header.Set("X-Event-Type", eventType)
+	req.Header.Set("X-Key-ID", keyID)
 	req.Header.Set("X-Timestamp", strconv.FormatInt(timestamp, 10))
 	req.Header.Set("X-Signature", signature)
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		panic(err)
 	}
 	defer resp.Body.Close()
-
 	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("Status: %d\nBody: %s\n", resp.StatusCode, string(body))
+	fmt.Printf("[%s] key=%s evt=%s => HTTP %d | %s\n", eventID, keyID, eventType, resp.StatusCode, string(body))
+}
+
+func main() {
+	send("bar.event", "shared-key", "aaa", "cross-test-1")
+	send("foo.event", "shared-key", "aaa", "cross-test-2")
 }

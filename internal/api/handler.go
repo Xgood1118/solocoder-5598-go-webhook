@@ -263,8 +263,28 @@ func (h *Handler) AddAPIKey(c *gin.Context) {
 
 	for _, k := range ep.APIKeys {
 		if k.KeyID == req.KeyID {
-			c.JSON(http.StatusConflict, gin.H{"error": "key_id already exists"})
+			c.JSON(http.StatusConflict, gin.H{"error": "key_id already exists on this endpoint"})
 			return
+		}
+	}
+
+	allEps, err := h.store.ListEndpoints()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	for _, other := range allEps {
+		if other.ID == id {
+			continue
+		}
+		for _, k := range other.APIKeys {
+			if k.KeyID == req.KeyID {
+				c.JSON(http.StatusConflict, gin.H{
+					"error":       "key_id already in use by another endpoint",
+					"endpoint_id": other.ID,
+				})
+				return
+			}
 		}
 	}
 

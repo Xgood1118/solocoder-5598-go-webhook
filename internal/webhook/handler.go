@@ -104,7 +104,7 @@ func (h *Handler) ReceiveWebhook(c *gin.Context) {
 		return
 	}
 
-	verifyResult := h.verifyByAllEndpoints(body, timestamp, signature, keyID)
+	verifyResult := h.verifyByAllEndpoints(body, timestamp, signature, keyID, eventType)
 
 	event := &model.Event{
 		ID:          eventID,
@@ -143,7 +143,7 @@ type verifyRes struct {
 	Valid bool
 }
 
-func (h *Handler) verifyByAllEndpoints(payload []byte, timestamp int64, signature string, keyID string) verifyRes {
+func (h *Handler) verifyByAllEndpoints(payload []byte, timestamp int64, signature string, keyID string, eventType string) verifyRes {
 	endpoints, err := h.store.ListEndpoints()
 	if err != nil {
 		log.Error().Err(err).Msg("failed to list endpoints")
@@ -151,6 +151,17 @@ func (h *Handler) verifyByAllEndpoints(payload []byte, timestamp int64, signatur
 	}
 
 	for _, ep := range endpoints {
+		subscribed := false
+		for _, et := range ep.EventTypes {
+			if et == eventType || et == "*" {
+				subscribed = true
+				break
+			}
+		}
+		if !subscribed {
+			continue
+		}
+
 		for _, key := range ep.APIKeys {
 			if key.KeyID == keyID {
 				result := h.verifier.VerifyWithKeys(ep.APIKeys, payload, timestamp, signature, keyID)
