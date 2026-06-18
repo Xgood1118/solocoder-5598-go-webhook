@@ -211,7 +211,7 @@ func (d *Dispatcher) handleDeliveryError(delivery *model.Delivery, event *model.
 		Str("error", errMsg).
 		Msg("delivery failed")
 
-	if delivery.Attempt > delivery.MaxRetries {
+	if delivery.Attempt >= delivery.MaxRetries {
 		d.moveToDeadLetter(delivery, event)
 		return
 	}
@@ -350,23 +350,35 @@ func (d *Dispatcher) checkSlowConsumerAndReset(ep *model.Endpoint, duration time
 		return
 	}
 
-	if duration > ep.SlowConsumerThreshold {
-		ep.SlowConsumerHitCount++
-		if ep.SlowConsumerHitCount >= ep.SlowConsumerMaxCount {
-			ep.Status = model.EndpointPaused
+	fresh, err := d.store.GetEndpoint(ep.ID)
+	if err != nil {
+		log.Error().Err(err).Str("endpoint_id", ep.ID).Msg("failed to read endpoint for slow consumer check")
+		return
+	}
+
+	changed := false
+	if duration > fresh.SlowConsumerThreshold {
+		fresh.SlowConsumerHitCount++
+		changed = true
+		if fresh.SlowConsumerHitCount >= fresh.SlowConsumerMaxCount {
+			fresh.Status = model.EndpointPaused
+			fresh.SlowConsumerHitCount = 0
 			log.Warn().
-				Str("endpoint_id", ep.ID).
-				Int("hit_count", ep.SlowConsumerHitCount).
-				Dur("threshold", ep.SlowConsumerThreshold).
+				Str("endpoint_id", fresh.ID).
+				Int("hit_count", fresh.SlowConsumerMaxCount).
+				Dur("threshold", fresh.SlowConsumerThreshold).
 				Msg("slow consumer detected, pausing endpoint")
 		}
 	} else {
-		if ep.SlowConsumerHitCount > 0 {
-			ep.SlowConsumerHitCount = 0
+		if fresh.SlowConsumerHitCount > 0 {
+			fresh.SlowConsumerHitCount = 0
+			changed = true
 		}
 	}
 
-	if err := d.store.UpdateEndpoint(ep); err != nil {
-		log.Error().Err(err).Str("endpoint_id", ep.ID).Msg("failed to update endpoint slow consumer status")
+	if changed {
+		if err := d.store.UpdateEndpoint(fresh); err != nil {
+			log.Error().Err(err).Str("endpoint_id", fresh.ID).Msg("failed to update endpoint slow consumer status")
+		}
 	}
 }

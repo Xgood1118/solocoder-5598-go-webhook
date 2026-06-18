@@ -54,6 +54,24 @@ func (h *Handler) ReceiveWebhook(c *gin.Context) {
 		return
 	}
 
+	if signature == "" || keyID == "" || timestampStr == "" {
+		missing := []string{}
+		if signature == "" {
+			missing = append(missing, "X-Signature")
+		}
+		if keyID == "" {
+			missing = append(missing, "X-Key-ID")
+		}
+		if timestampStr == "" {
+			missing = append(missing, "X-Timestamp")
+		}
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error":          "missing signature headers",
+			"missing_headers": missing,
+		})
+		return
+	}
+
 	if eventID == "" {
 		eventID = uuid.New().String()
 	}
